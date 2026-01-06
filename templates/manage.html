@@ -1,0 +1,123 @@
+{% extends "base.html" %}
+{% block title %}Manage Dataset{% endblock %}
+
+{% block content %}
+<h2>Manage Dataset Wajah</h2>
+
+<hr>
+
+<h3>Tambah Dataset Baru</h3>
+
+<label>Nama Orang</label>
+<input type="text" id="personName" placeholder="Masukkan Nama">
+
+<br><br>
+
+<button onclick="startCamera()">Mulai Kamera</button>
+<button onclick="capturePhoto()">Ambil Foto</button>
+
+<video id="video" width="360" autoplay style="display:none;border:1px solid #aaa;"></video>
+
+<br><br>
+
+<label>Upload Foto Dari Folder</label>
+<input type="file" id="fileInput" accept="image/*" multiple>
+
+<hr>
+
+<h3>Preview Dataset</h3>
+<div id="preview" style="display:flex;flex-wrap:wrap;"></div>
+
+<br>
+<button onclick="saveDataset()">Simpan Dataset</button>
+
+<hr>
+
+<h3>Daftar Orang</h3>
+<ul>
+{% for p in persons %}
+  <li>
+    {{ p }}
+    <form method="POST" action="/delete_person" style="display:inline">
+      <input type="hidden" name="name" value="{{ p }}">
+      <button type="submit">Hapus</button>
+    </form>
+  </li>
+{% endfor %}
+</ul>
+
+{% endblock %}
+
+{% block script %}
+<script>
+let video=null;
+let stream=null;
+let previewPhotos=[];
+
+function startCamera(){
+  video=document.getElementById("video");
+  navigator.mediaDevices.getUserMedia({video:true}).then(s=>{
+    stream=s;
+    video.srcObject=s;
+    video.style.display="block";
+  });
+}
+
+function capturePhoto(){
+  if(!video) return alert("Kamera belum jalan");
+
+  const c=document.createElement("canvas");
+  c.width=video.videoWidth;
+  c.height=video.videoHeight;
+  c.getContext("2d").drawImage(video,0,0);
+  previewPhotos.push(c.toDataURL("image/jpeg"));
+  renderPreview();
+}
+
+document.getElementById("fileInput").onchange=e=>{
+  [...e.target.files].forEach(f=>{
+    const r=new FileReader();
+    r.onload=x=>{
+      previewPhotos.push(x.target.result);
+      renderPreview();
+    };
+    r.readAsDataURL(f);
+  });
+};
+
+function removePhoto(i){
+  previewPhotos.splice(i,1);
+  renderPreview();
+}
+
+function renderPreview(){
+  const div=document.getElementById("preview");
+  div.innerHTML="";
+  previewPhotos.forEach((p,i)=>{
+    div.innerHTML+=`
+      <div style="position:relative;margin:5px">
+        <img src="${p}" style="width:140px;border:1px solid #aaa">
+        <button onclick="removePhoto(${i})"
+          style="position:absolute;top:0;right:0">X</button>
+      </div>`;
+  });
+}
+
+function saveDataset(){
+  const name=document.getElementById("personName").value.trim();
+  if(!name) return alert("Masukkan nama");
+  if(previewPhotos.length===0) return alert("Belum ada foto");
+
+  fetch("/save_dataset",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body:JSON.stringify({ name:name, images:previewPhotos })
+  })
+  .then(r=>r.json())
+  .then(d=>{
+    alert(d.message);
+    if(d.success) location.reload();
+  });
+}
+</script>
+{% endblock %}

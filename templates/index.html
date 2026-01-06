@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}Presensi Wajah{% endblock %}
+
+{% block content %}
+<h1>Presensi Wajah (Real-Time)</h1>
+
+<div class="mb-3">
+  <label>Kelas</label>
+  <input id="class" type="text" placeholder="Contoh: IF-3A">
+
+  <label style="margin-left:10px;">Mata Kuliah</label>
+  <input id="course" type="text" placeholder="Contoh: Sistem Multimedia">
+</div>
+
+<div class="mb-3">
+  <button id="startCam">Mulai Presensi</button>
+  <button id="stopCam">Stop Presensi</button>
+</div>
+
+<div>
+  <img id="videoFeed" width="640" height="480" style="display:none;">
+</div>
+
+<div class="mt-3">
+  <button id="rekam-btn">Rekam Presensi</button>
+</div>
+{% endblock %}
+
+{% block script %}
+<script>
+let video = document.getElementById('videoFeed');
+
+document.getElementById('startCam').addEventListener('click', () => {
+    video.src = '/video_feed';
+    video.style.display = 'block';
+});
+
+document.getElementById('stopCam').addEventListener('click', () => {
+    fetch('/stop_feed');
+    video.src = '';
+    video.style.display = 'none';
+});
+
+document.getElementById("rekam-btn").addEventListener("click", function() {
+
+    let course = document.getElementById("course").value;
+    let class_name = document.getElementById("class").value;
+
+    if(!course || !class_name){
+      showToast("Isi kelas dan mata kuliah dulu", false);
+      return;
+    }
+
+    fetch("/rekam_presensi", { 
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body: JSON.stringify({
+        course: course,
+        class: class_name
+      })
+    })
+
+    .then(resp => resp.json())
+    .then(data => {
+        if (data.success) {
+            showToast(data.messages.join("<br>"), true);
+        } else {
+            showToast(data.messages.join("<br>"), false);
+        }
+    });
+});
+</script>
+{% endblock %}
