@@ -117,6 +117,21 @@ def rebuild_embeddings():
     face_embeddings = load_face_embeddings()
     print(f"[INFO] Total identitas: {len(face_embeddings)}")
 
+def get_next_index(folder, name):
+    max_idx = 0
+    if not os.path.exists(folder):
+        return 1
+
+    for f in os.listdir(folder):
+        if f.lower().startswith(name.lower() + "_") and f.lower().endswith(".jpg"):
+            try:
+                idx = int(f.split("_")[-1].split(".")[0])
+                max_idx = max(max_idx, idx)
+            except:
+                pass
+
+    return max_idx + 1
+
 
 # ------------------ CAMERA THREAD ------------------
 def camera_loop():
@@ -452,8 +467,9 @@ def add_face_cam():
         save_dir = os.path.join(FACE_DIR, name)
         os.makedirs(save_dir, exist_ok=True)
 
-        existing = len([f for f in os.listdir(save_dir) if f.lower().endswith(('.jpg','.png','.jpeg'))])
-        filename = f"{name}_{existing+1}.jpg"
+        next_idx = get_next_index(save_dir, name)
+        filename = f"{name}_{next_idx}.jpg"
+
 
         # decode base64 -> image
         img_str = re.sub('^data:image/.+;base64,', '', image_data)
@@ -537,12 +553,9 @@ def add_face_upload():
 
             face_crop = cv2.resize(face_crop, (160, 160))
 
-            existing = len([
-                x for x in os.listdir(save_dir)
-                if x.lower().endswith((".jpg", ".png", ".jpeg"))
-            ])
+            next_idx = get_next_index(save_dir, name)
+            filename = f"{name}_{next_idx}.jpg"
 
-            filename = f"{name}_{existing+1}.jpg"
             cv2.imwrite(os.path.join(save_dir, filename), face_crop)
 
             # ---------- update embeddings ----------
@@ -604,7 +617,9 @@ def save_dataset():
             face = (face * 255).astype("uint8")
             face = cv2.resize(face, (160,160))
 
-            filename = os.path.join(save_dir, f"{name}_{i+1}.jpg")
+            next_idx = get_next_index(save_dir, name)
+            filename = os.path.join(save_dir, f"{name}_{next_idx}.jpg")
+
             cv2.imwrite(filename, face)
 
             emb = DeepFace.represent(
