@@ -331,29 +331,6 @@ function saveAttendance() {
 
 window.onload = initCamera;
 
-function downloadConfidenceCSV() {
-  if (previewResults.length === 0) {
-    showToast("Belum ada hasil confidence", false);
-    return;
-  }
 
-  let csv = "Nama,Confidence\n";
-
-  previewResults.forEach(r => {
-    csv += `${r.name},${r.confidence}\n`;
-  });
-
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "confidence_preview.csv";
-  document.body.appendChild(a);
-  a.click();
-
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
-}
 </script>
 {% endblock %}
