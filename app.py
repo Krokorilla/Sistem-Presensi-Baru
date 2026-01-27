@@ -90,7 +90,7 @@ def load_face_embeddings():
                         try:
                             # generate embedding dengan DeepFace
                             emb = DeepFace.represent(
-                                img_path=path, model_name='Facenet', enforce_detection=False
+                                img_path=path, model_name='Facenet512', enforce_detection=False
                             )[0]['embedding']
                             embeddings_db[person].append(np.array(emb))
                         except Exception as e:
@@ -101,7 +101,22 @@ def load_face_embeddings():
         print("[INFO] Embeddings baru digenerate & disimpan ke pickle")
         return embeddings_db
 
-face_embeddings = load_face_embeddings()
+face_embeddings = {}
+
+def rebuild_embeddings():
+    """
+    Selalu generate ulang embedding dari folder faces saat server start
+    """
+    global face_embeddings
+
+    if os.path.exists(EMB_FILE):
+        os.remove(EMB_FILE)
+        print("[INFO] Embedding lama dihapus")
+
+    print("[INFO] Generate ulang embedding dari dataset...")
+    face_embeddings = load_face_embeddings()
+    print(f"[INFO] Total identitas: {len(face_embeddings)}")
+
 
 # ------------------ CAMERA THREAD ------------------
 def camera_loop():
@@ -409,20 +424,21 @@ def manage():
 
 @app.route('/delete_person', methods=['POST'])
 def delete_person():
-    """Hapus data wajah & embeddings seseorang"""
     name = request.form['name']
     folder_path = os.path.join(FACE_DIR, name)
 
     if os.path.exists(folder_path):
         shutil.rmtree(folder_path)
         flash(f"Folder wajah {name} berhasil dihapus.", "success")
-        if name in face_embeddings:
-            del face_embeddings[name]  # hapus embedding juga
-            save_embeddings()
+
+        #REBUILD TOTAL EMBEDDINGS
+        rebuild_embeddings()
+
     else:
         flash(f"Folder wajah {name} tidak ditemukan.", "error")
 
     return redirect(url_for('manage'))
+
 
 @app.route('/add_face_cam', methods=['POST'])
 def add_face_cam():
@@ -765,7 +781,7 @@ def preview_faces():
 
         detections = DeepFace.extract_faces(
             img_path=img_np,
-            detector_backend="ssd",
+            detector_backend="retinaface",
             enforce_detection=False
         )
 
@@ -776,23 +792,42 @@ def preview_faces():
 
             emb = DeepFace.represent(
                 img_path=face,
-                model_name="Facenet",
+                model_name="Facenet512",
                 detector_backend="skip",
                 enforce_detection=False
             )[0]["embedding"]
 
-            best_name, best_score = "Unknown", -1
+            # ---------------------------
+            # MATCHING
+            # ---------------------------
+            best_name = "Unknown"
+            best_score = -1
+
             for name, emb_list in face_embeddings.items():
                 for ref in emb_list:
                     score = cosine_similarity([emb], [ref])[0][0]
                     if score > best_score:
-                        best_name, best_score = name, score
+                        best_score = score
+                        best_name = name
 
-            if best_score >= 0.75:
+            # ---------------------------
+            # LEVEL 1 → LABELING (LONGGAR)
+            # ---------------------------
+            if best_score < 0.50:
+                label = "Unknown"
+            else:
+                label = best_name
+
+            # ---------------------------
+            # LEVEL 2 → VOTING (PREVIEW)
+            # ---------------------------
+            if best_score >= 0.60:
                 vote_results.setdefault(best_name, []).append(best_score)
 
+            # Draw bounding box
             cv2.rectangle(img_np, (x, y), (x+w, y+h), (0,255,0), 2)
-            cv2.putText(img_np, best_name, (x, y-10),
+            cv2.putText(img_np, f"{label} ({best_score:.2f})",
+                        (x, y-10),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
 
         _, buf = cv2.imencode(".jpg", img_np)
@@ -800,14 +835,17 @@ def preview_faces():
             "data:image/jpeg;base64," + base64.b64encode(buf).decode()
         )
 
-    results = [
-        {
-            "name": n,
-            "confidence": round(sum(s)/len(s), 3)
-        }
-        for n, s in vote_results.items()
-        if sum(s)/len(s) >= 0.8
-    ]
+    # ---------------------------
+    # FINAL PREVIEW TABLE
+    # ---------------------------
+    results = []
+    for name, scores in vote_results.items():
+        avg = sum(scores) / len(scores)
+        results.append({
+            "name": name,
+            "confidence": round(avg, 3),
+            "status": "OK" if avg >= 0.7 else "Perlu verifikasi"
+        })
 
     return jsonify({
         "success": True,
@@ -887,6 +925,9 @@ def save_attendance():
 # ------------------ RUN ------------------
 signal.signal(signal.SIGINT, graceful_exit)
 signal.signal(signal.SIGTERM, graceful_exit)
+print("Server starting...")
+rebuild_embeddings()
+print("Embedding siap")
 if __name__ == "__main__":
     app.run(debug=True, threaded=False)
   # jalankan server Flask

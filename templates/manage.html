@@ -2,46 +2,109 @@
 {% block title %}Manage Dataset{% endblock %}
 
 {% block content %}
-<h2>Manage Dataset Wajah</h2>
+<style>
+/* =======================
+   BASIC STYLE
+======================= */
+#preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
 
+.preview-item {
+  position: relative;
+}
+
+.preview-item img {
+  width: 140px;
+  border: 1px solid #aaa;
+  border-radius: 6px;
+}
+
+.preview-item button {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  background: red;
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 22px;
+  height: 22px;
+  cursor: pointer;
+}
+
+/* =======================
+   LOADING STYLE
+======================= */
+.loading-btn {
+  opacity: 0.6;
+  pointer-events: none;
+}
+
+.spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #ccc;
+  border-top: 2px solid #333;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 6px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+</style>
+
+<h2>Manage Dataset Wajah</h2>
 <hr>
 
+<!-- =======================
+     TAMBAH DATASET
+======================= -->
 <h3>Tambah Dataset Baru</h3>
 
-<label>Nama Orang</label>
+<label>Nama Orang</label><br>
 <input type="text" id="personName" placeholder="Masukkan Nama">
-
 <br><br>
 
 <button onclick="startCamera()">Mulai Kamera</button>
 <button onclick="capturePhoto()">Ambil Foto</button>
 
+<br><br>
+
 <video id="video" width="360" autoplay style="display:none;border:1px solid #aaa;"></video>
 
 <br><br>
 
-<label>Upload Foto Dari Folder</label>
+<label>Upload Foto dari Folder</label><br>
 <input type="file" id="fileInput" accept="image/*" multiple>
 
 <hr>
 
+<!-- =======================
+     PREVIEW DATASET
+======================= -->
 <h3>Preview Dataset</h3>
-<div id="preview" style="display:flex;flex-wrap:wrap;"></div>
+<div id="preview"></div>
 
 <br>
 <button onclick="saveDataset()">Simpan Dataset</button>
 
 <hr>
 
+<!-- =======================
+     DAFTAR ORANG
+======================= -->
 <h3>Daftar Orang</h3>
 <ul>
 {% for p in persons %}
   <li>
     {{ p }}
-    <form method="POST" action="/delete_person" style="display:inline">
-      <input type="hidden" name="name" value="{{ p }}">
-      <button type="submit">Hapus</button>
-    </form>
+    <button onclick="deletePerson('{{ p }}', this)">Hapus</button>
   </li>
 {% endfor %}
 </ul>
@@ -50,73 +113,126 @@
 
 {% block script %}
 <script>
-let video=null;
-let stream=null;
-let previewPhotos=[];
+let video = null;
+let stream = null;
+let previewPhotos = [];
 
-function startCamera(){
-  video=document.getElementById("video");
-  navigator.mediaDevices.getUserMedia({video:true}).then(s=>{
-    stream=s;
-    video.srcObject=s;
-    video.style.display="block";
-  });
+/* =======================
+   CAMERA
+======================= */
+function startCamera() {
+  video = document.getElementById("video");
+  navigator.mediaDevices.getUserMedia({ video: true })
+    .then(s => {
+      stream = s;
+      video.srcObject = s;
+      video.style.display = "block";
+    })
+    .catch(() => alert("Tidak bisa mengakses kamera"));
 }
 
-function capturePhoto(){
-  if(!video) return alert("Kamera belum jalan");
+function capturePhoto() {
+  if (!video || !video.videoWidth) {
+    alert("Kamera belum siap");
+    return;
+  }
 
-  const c=document.createElement("canvas");
-  c.width=video.videoWidth;
-  c.height=video.videoHeight;
-  c.getContext("2d").drawImage(video,0,0);
+  const c = document.createElement("canvas");
+  c.width = video.videoWidth;
+  c.height = video.videoHeight;
+  c.getContext("2d").drawImage(video, 0, 0);
+
   previewPhotos.push(c.toDataURL("image/jpeg"));
   renderPreview();
 }
 
-document.getElementById("fileInput").onchange=e=>{
-  [...e.target.files].forEach(f=>{
-    const r=new FileReader();
-    r.onload=x=>{
-      previewPhotos.push(x.target.result);
+/* =======================
+   UPLOAD FOLDER
+======================= */
+document.getElementById("fileInput").onchange = e => {
+  [...e.target.files].forEach(file => {
+    const r = new FileReader();
+    r.onload = ev => {
+      previewPhotos.push(ev.target.result);
       renderPreview();
     };
-    r.readAsDataURL(f);
+    r.readAsDataURL(file);
   });
 };
 
-function removePhoto(i){
-  previewPhotos.splice(i,1);
-  renderPreview();
-}
+/* =======================
+   PREVIEW RENDER
+======================= */
+function renderPreview() {
+  const div = document.getElementById("preview");
+  div.innerHTML = "";
 
-function renderPreview(){
-  const div=document.getElementById("preview");
-  div.innerHTML="";
-  previewPhotos.forEach((p,i)=>{
-    div.innerHTML+=`
-      <div style="position:relative;margin:5px">
-        <img src="${p}" style="width:140px;border:1px solid #aaa">
-        <button onclick="removePhoto(${i})"
-          style="position:absolute;top:0;right:0">X</button>
-      </div>`;
+  previewPhotos.forEach((p, i) => {
+    div.innerHTML += `
+      <div class="preview-item">
+        <img src="${p}">
+        <button onclick="removePhoto(${i})">×</button>
+      </div>
+    `;
   });
 }
 
-function saveDataset(){
-  const name=document.getElementById("personName").value.trim();
-  if(!name) return alert("Masukkan nama");
-  if(previewPhotos.length===0) return alert("Belum ada foto");
+function removePhoto(i) {
+  previewPhotos.splice(i, 1);
+  renderPreview();
+}
 
-  fetch("/save_dataset",{
-    method:"POST",
-    headers:{ "Content-Type":"application/json" },
-    body:JSON.stringify({ name:name, images:previewPhotos })
+/* =======================
+   SAVE DATASET
+======================= */
+function saveDataset() {
+  const name = document.getElementById("personName").value.trim();
+
+  if (!name) {
+    alert("Masukkan nama orang");
+    return;
+  }
+
+  if (previewPhotos.length === 0) {
+    alert("Belum ada foto");
+    return;
+  }
+
+  fetch("/save_dataset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: name,
+      images: previewPhotos
+    })
   })
-  .then(r=>r.json())
-  .then(d=>{
+  .then(r => r.json())
+  .then(d => {
     alert(d.message);
-    if(d.success) location.reload();
+    if (d.success) location.reload();
+  })
+  .catch(() => alert("Gagal menyimpan dataset"));
+}
+
+/* =======================
+   DELETE PERSON + LOADING
+======================= */
+function deletePerson(name, btn) {
+  if (!confirm(`Hapus dataset wajah ${name}?`)) return;
+
+  btn.innerHTML = `<span class="spinner"></span>Menghapus...`;
+  btn.classList.add("loading-btn");
+
+  fetch("/delete_person", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({ name: name })
+  })
+  .then(() => location.reload())
+  .catch(() => {
+    alert("Gagal menghapus dataset");
+    btn.innerText = "Hapus";
+    btn.classList.remove("loading-btn");
   });
 }
 </script>

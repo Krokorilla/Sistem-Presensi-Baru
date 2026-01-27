@@ -14,7 +14,7 @@ Absensi Klasifikasi
   }
 
   #photos img{
-    width:300px;           /* 🔥 gambar lebih besar */
+    width:300px;
     border:1px solid #4CAF50;
     border-radius:10px;
   }
@@ -35,6 +35,20 @@ Absensi Klasifikasi
     height:28px;
     cursor:pointer;
   }
+
+  /* LOADING OVERLAY */
+  #loading{
+    display:none;
+    position:fixed;
+    top:0; left:0;
+    width:100%; height:100%;
+    background:rgba(0,0,0,0.6);
+    color:white;
+    z-index:9999;
+    text-align:center;
+    padding-top:200px;
+    font-size:22px;
+  }
 </style>
 
 <h2>Absensi Menggunakan Foto (Klasifikasi)</h2>
@@ -50,9 +64,8 @@ Absensi Klasifikasi
   <!-- Input kelas -->
   <div style="margin-bottom:10px;">
     <label>Kelas</label><br>
-    <input type="text" id="class"
-          placeholder="Contoh: IF-3A"
-          style="width:100%; padding:8px;">
+    <input type="text" id="class" placeholder="Contoh: IF-3A"
+           style="width:100%; padding:8px;">
   </div>
 
   <!-- Input mata kuliah -->
@@ -78,8 +91,7 @@ Absensi Klasifikasi
   <br><br>
 
   <button onclick="capturePhoto()">Ambil Foto</button>
-  <button onclick="previewFaces()">Preview</button>
-  <button onclick="saveAttendance()">Simpan Absensi</button>
+  
 
   <hr>
 
@@ -90,6 +102,10 @@ Absensi Klasifikasi
   <!-- Foto -->
   <h3>Foto</h3>
   <div id="photos"></div>
+
+  <br><br>
+  <button onclick="previewFaces()">Preview</button>
+  <button onclick="saveAttendance()">Simpan Absensi</button>
 
   <!-- Hasil -->
   <h3>Hasil Klasifikasi</h3>
@@ -106,6 +122,12 @@ Absensi Klasifikasi
   </table>
 
 </div>
+
+<!-- LOADING -->
+<div id="loading">
+  🔄 Memproses wajah, mohon tunggu...
+</div>
+
 {% endblock %}
 
 {% block script %}
@@ -114,10 +136,19 @@ let video = document.getElementById("video");
 let cameraSelect = document.getElementById("cameraSelect");
 let dateInput = document.getElementById("date");
 let courseInput = document.getElementById("course");
+let classInput = document.getElementById("class");
+
 let photos = [];
 let previewResults = [];
 let annotatedImages = [];
 let stream = null;
+
+/* ===============================
+   LOADING
+================================ */
+function showLoading(show){
+  document.getElementById("loading").style.display = show ? "block" : "none";
+}
 
 /* ===============================
    INIT CAMERA
@@ -184,7 +215,7 @@ document.getElementById("fileInput").onchange = e => {
 };
 
 /* ===============================
-   RENDER FOTO (BESAR)
+   RENDER FOTO
 ================================ */
 function renderPhotos() {
   const div = document.getElementById("photos");
@@ -207,8 +238,6 @@ function removePhoto(i) {
    PREVIEW
 ================================ */
 function previewFaces() {
-  let classInput = document.getElementById("class");
-
   if (!dateInput.value || !courseInput.value || !classInput.value) {
     showToast("Lengkapi tanggal, mata kuliah & kelas dulu", false);
     return;
@@ -219,6 +248,8 @@ function previewFaces() {
     return;
   }
 
+  showLoading(true);
+
   fetch("/preview_faces", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -226,6 +257,8 @@ function previewFaces() {
   })
   .then(res => res.json())
   .then(data => {
+    showLoading(false);
+
     previewResults = data.results;
     annotatedImages = data.annotated_images;
 
@@ -245,9 +278,13 @@ function previewFaces() {
         <tr>
           <td>${r.name}</td>
           <td>${r.confidence}</td>
-          <td>Preview</td>
+          <td>${r.status || "Preview"}</td>
         </tr>`;
     });
+  })
+  .catch(() => {
+    showLoading(false);
+    showToast("Gagal memproses preview", false);
   });
 }
 
@@ -255,44 +292,39 @@ function previewFaces() {
    SIMPAN ABSENSI
 ================================ */
 function saveAttendance() {
+  if (!dateInput.value || !courseInput.value || !classInput.value) {
+    showToast("Lengkapi tanggal, mata kuliah & kelas dulu", false);
+    return;
+  }
 
-let classInput = document.getElementById("class");
+  if (annotatedImages.length === 0) {
+    showToast("Lakukan preview terlebih dahulu", false);
+    return;
+  }
 
-if (!dateInput.value || !courseInput.value || !classInput.value) {
-  showToast("Lengkapi tanggal, mata kuliah & kelas dulu", false);
-  return;
-}
-
-if (annotatedImages.length === 0) {
-  showToast("Lakukan preview terlebih dahulu", false);
-  return;
-}
-
-fetch("/save_attendance", {
-  method:"POST",
-  headers:{ "Content-Type":"application/json" },
-  body: JSON.stringify({
-    date: dateInput.value,
-    course: courseInput.value,
-    class: classInput.value,
-    results: previewResults,
-    images: annotatedImages
+  fetch("/save_attendance", {
+    method:"POST",
+    headers:{ "Content-Type":"application/json" },
+    body: JSON.stringify({
+      date: dateInput.value,
+      course: courseInput.value,
+      class: classInput.value,
+      results: previewResults,
+      images: annotatedImages
+    })
   })
-})
-.then(res => res.json())
-.then(data => {
-  showToast(data.message, data.success);
+  .then(res => res.json())
+  .then(data => {
+    showToast(data.message, data.success);
+    const tbody = document.querySelector("#resultTable tbody");
+    [...tbody.rows].forEach(r => r.cells[2].innerText = "Tercatat");
 
-  const tbody = document.querySelector("#resultTable tbody");
-  [...tbody.rows].forEach(r => r.cells[2].innerText = "Tercatat");
-  photos = [];
-  annotatedImages = [];
-  renderPhotos();
-
-})
-.catch(() => showToast("Gagal menyimpan absensi", false));
+    photos = [];
+    annotatedImages = [];
+    renderPhotos();
+  })
+  .catch(() => showToast("Gagal menyimpan absensi", false));
 }
-
 
 window.onload = initCamera;
 </script>
