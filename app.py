@@ -864,7 +864,7 @@ def preview_faces():
             # ---------------------------
             # LEVEL 2: VOTING (PREVIEW)
             # ---------------------------
-            if best_score >= 0.60 and label != "Unknown":
+            if best_score >= 0.50 and label != "Unknown":
                 vote_results.setdefault(best_name, []).append(best_score)
 
             # ---------------------------
