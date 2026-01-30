@@ -497,7 +497,7 @@ def add_face_cam():
         # update embeddings
         emb = DeepFace.represent(
             img_path=os.path.join(save_dir, filename),
-            model_name="Facenet",
+            model_name= active_model,
             detector_backend="skip",
             enforce_detection=False
         )[0]["embedding"]
@@ -561,7 +561,7 @@ def add_face_upload():
             # ---------- update embeddings ----------
             emb = DeepFace.represent(
                 img_path=os.path.join(save_dir, filename),
-                model_name="Facenet",
+                model_name=active_model,
                 detector_backend="skip",
                 enforce_detection=False
             )[0]["embedding"]
@@ -624,7 +624,7 @@ def save_dataset():
 
             emb = DeepFace.represent(
                 img_path=face,
-                model_name="Facenet",
+                model_name=active_model,
                 detector_backend="skip",
                 enforce_detection=False
             )[0]["embedding"]
@@ -692,7 +692,7 @@ def classify_faces():
                 # Embedding wajah
                 emb = DeepFace.represent(
                     img_path=face_img,
-                    model_name="Facenet",
+                    model_name=active_model,
                     detector_backend="skip",
                     enforce_detection=False
                 )[0]["embedding"]
@@ -784,49 +784,77 @@ def classify_faces():
 @app.route("/preview_faces", methods=["POST"])
 def preview_faces():
     data = request.get_json()
-    images = data.get("images")
+    images = data.get("images", [])
 
-    vote_results = {}
+    vote_results = {}          # { name: [score, score, ...] }
     annotated_images = []
 
     for image_data in images:
+        # ---------------------------
+        # Decode image
+        # ---------------------------
         img_str = re.sub('^data:image/.+;base64,', '', image_data)
         img = Image.open(BytesIO(base64.b64decode(img_str))).convert("RGB")
         img_np = np.array(img)
 
+        # ---------------------------
+        # Deteksi wajah
+        # ---------------------------
         detections = DeepFace.extract_faces(
             img_path=img_np,
             detector_backend="retinaface",
             enforce_detection=False
         )
 
+        used_names = set()   # ⬅️ PENTING: cegah nama ganda dalam 1 gambar
+
         for det in detections:
             fa = det["facial_area"]
             x, y, w, h = fa["x"], fa["y"], fa["w"], fa["h"]
             face = det["face"]
 
+            # ---------------------------
+            # Embedding wajah (MODEL AKTIF)
+            # ---------------------------
             emb = DeepFace.represent(
                 img_path=face,
-                model_name=active_model,
+                model_name=active_model,   # contoh: "Facenet512"
                 detector_backend="skip",
                 enforce_detection=False
             )[0]["embedding"]
 
             # ---------------------------
-            # MATCHING
+            # MATCHING: kumpulkan kandidat
             # ---------------------------
-            best_name = "Unknown"
-            best_score = -1
-
+            candidates = []
             for name, emb_list in face_embeddings.items():
                 for ref in emb_list:
                     score = cosine_similarity([emb], [ref])[0][0]
-                    if score > best_score:
-                        best_score = score
-                        best_name = name
+                    candidates.append((name, score))
+
+            # Urutkan dari confidence tertinggi
+            candidates.sort(key=lambda x: x[1], reverse=True)
+
+            best_name = "Unknown"
+            best_score = -1
 
             # ---------------------------
-            # LEVEL 1 → LABELING (LONGGAR)
+            # PILIH KANDIDAT TERBAIK
+            # ---------------------------
+            for name, score in candidates:
+                if score < 0.50:
+                    break   # sudah tidak layak
+
+                if name in used_names:
+                    continue  # ❌ sudah dipakai wajah lain
+
+                best_name = name
+                best_score = score
+                used_names.add(name)
+                break
+
+            # ---------------------------
+            # LEVEL 1: LABELING
             # ---------------------------
             if best_score < 0.50:
                 label = "Unknown"
@@ -834,17 +862,27 @@ def preview_faces():
                 label = best_name
 
             # ---------------------------
-            # LEVEL 2 → VOTING (PREVIEW)
+            # LEVEL 2: VOTING (PREVIEW)
             # ---------------------------
-            if best_score >= 0.60:
+            if best_score >= 0.60 and label != "Unknown":
                 vote_results.setdefault(best_name, []).append(best_score)
 
-            # Draw bounding box
-            cv2.rectangle(img_np, (x, y), (x+w, y+h), (0,255,0), 2)
-            cv2.putText(img_np, f"{label} ({best_score:.2f})",
-                        (x, y-10),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0,255,0), 2)
+            # ---------------------------
+            # DRAW BOX
+            # ---------------------------
+            color = (0, 255, 0) if label != "Unknown" else (0, 0, 255)
+            cv2.rectangle(img_np, (x, y), (x+w, y+h), color, 2)
+            cv2.putText(
+                img_np,
+                f"{label} ({best_score:.2f})",
+                (x, y-10),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.7,
+                color,
+                2
+            )
 
+        # Encode hasil gambar
         _, buf = cv2.imencode(".jpg", img_np)
         annotated_images.append(
             "data:image/jpeg;base64," + base64.b64encode(buf).decode()
