@@ -872,13 +872,36 @@ def preview_faces():
             # ---------------------------
             color = (0, 255, 0) if label != "Unknown" else (0, 0, 255)
             cv2.rectangle(img_np, (x, y), (x+w, y+h), color, 2)
+
+            text = f"{label} ({best_score:.2f})"
+            (font_w, font_h), baseline = cv2.getTextSize(
+                text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2
+            )
+
+            # Tentukan posisi teks (anti nabrak)
+            text_x = x
+            text_y = y - 10
+
+            # Kalau terlalu atas → pindah ke dalam box
+            if text_y - font_h < 0:
+                text_y = y + font_h + 10
+
+            # Background teks (biar kebaca)
+            cv2.rectangle(
+                img_np,
+                (text_x, text_y - font_h - 5),
+                (text_x + font_w + 5, text_y + baseline),
+                color,
+                -1
+            )
+
             cv2.putText(
                 img_np,
-                f"{label} ({best_score:.2f})",
-                (x, y-10),
+                text,
+                (text_x + 2, text_y - 2),
                 cv2.FONT_HERSHEY_SIMPLEX,
                 0.7,
-                color,
+                (255, 255, 255),
                 2
             )
 
