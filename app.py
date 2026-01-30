@@ -12,7 +12,7 @@ import shutil
 import signal
 import sys
 
-
+active_model = "Facenet512"
 app = Flask(__name__)
 app.secret_key = "supersecret123"  # secret key untuk session & flash message
 def get_db():
@@ -90,7 +90,7 @@ def load_face_embeddings():
                         try:
                             # generate embedding dengan DeepFace
                             emb = DeepFace.represent(
-                                img_path=path, model_name='Facenet512', enforce_detection=False
+                                img_path=path, model_name=active_model, enforce_detection=False
                             )[0]['embedding']
                             embeddings_db[person].append(np.array(emb))
                         except Exception as e:
@@ -807,7 +807,7 @@ def preview_faces():
 
             emb = DeepFace.represent(
                 img_path=face,
-                model_name="Facenet512",
+                model_name=active_model,
                 detector_backend="skip",
                 enforce_detection=False
             )[0]["embedding"]
