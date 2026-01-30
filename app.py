@@ -806,7 +806,7 @@ def preview_faces():
             enforce_detection=False
         )
 
-        used_names = set()   # ⬅️ PENTING: cegah nama ganda dalam 1 gambar
+        used_names = set()   
 
         for det in detections:
             fa = det["facial_area"]
@@ -818,7 +818,7 @@ def preview_faces():
             # ---------------------------
             emb = DeepFace.represent(
                 img_path=face,
-                model_name=active_model,   # contoh: "Facenet512"
+                model_name=active_model,   
                 detector_backend="skip",
                 enforce_detection=False
             )[0]["embedding"]
